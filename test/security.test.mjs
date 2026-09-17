@@ -1,0 +1,39 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {pbkdf2Sync,randomBytes} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import worker,{digest} from '../worker.mjs';
+test('private plan, PIN lockout, sessions, shared writes and conflicting editors',async()=>{
+  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../drizzle/0000_dusty_thing.sql',import.meta.url),'utf8'));
+  const wrap=(sql,values=[])=>({bind:(...v)=>wrap(sql,v),first:async()=>db.prepare(sql).get(...values)||null,run:async()=>({meta:{changes:db.prepare(sql).run(...values).changes}})});
+  const pin='24681357',salt='test-salt',token=randomBytes(32).toString('hex');
+  const env={DB:{prepare:sql=>wrap(sql),batch:async a=>{db.exec('BEGIN');try{const r=await Promise.all(a.map(x=>x.run()));db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}}},PLAN_CONFIG:JSON.stringify({viewHash:await digest(token),pinSalt:salt,pinHash:pbkdf2Sync(pin,salt,100000,32,'sha256').toString('hex'),origins:['https://example.github.io']})};
+  async function call(path,method='GET',body,session='',auth=token,origin='https://example.github.io'){
+    return worker.fetch(new Request('https://api.example'+path,{method,headers:{Authorization:'Bearer '+auth,Origin:origin,'Content-Type':'application/json','X-Edit-Session':session},body:body?JSON.stringify(body):undefined}),env);
+  }
+  assert.equal((await call('/api/plan','GET',null,'','')).status,401);
+  assert.equal((await call('/private/seed.json')).status,404);
+  assert.equal((await call('/api/plan','GET',null,'',token,'https://evil.test')).status,403);
+  assert.equal((await call('/api/plan','PUT',{events:[],version:0})).status,403);
+  for(let i=0;i<5;i++)assert.equal((await call('/api/unlock','POST',{pin:'00000000'})).status,401);
+  assert.equal((await call('/api/unlock','POST',{pin})).status,429);
+  db.prepare('UPDATE attempts SET until_ms=0').run();
+  const s1=(await (await call('/api/unlock','POST',{pin})).json()).session;
+  const s2=(await (await call('/api/unlock','POST',{pin})).json()).session;
+  assert.ok(s1&&s2);
+  const events=[{id:'test-lesson',day:0,name:'Test',start:'08:00',end:'08:45',kind:'edu',note:'',uncertain:false}];
+  assert.equal((await call('/api/plan','PUT',{events,version:0},s1)).status,200);
+  let read=await call('/api/plan');assert.equal(read.headers.get('Cache-Control'),'no-store');assert.match(read.headers.get('X-Robots-Tag'),/noindex/);assert.deepEqual((await read.json()).events,events);
+  assert.equal((await call('/api/plan','PUT',{events,version:0},s2)).status,409);
+  assert.equal((await call('/api/plan','PUT',{events:[{...events[0],end:'07:00'}],version:1},s1)).status,400);
+  const changed=[{...events[0],day:2,name:'Changed'}];
+  assert.equal((await call('/api/plan','PUT',{events:changed,version:1},s1)).status,200);
+  assert.equal((await call('/api/plan','PUT',{events,version:1},s2)).status,409);
+  assert.deepEqual((await (await call('/api/plan')).json()).events,changed);
+  assert.equal((await call('/api/lock','POST',{},s1)).status,200);
+  assert.equal((await call('/api/plan','PUT',{events,version:2},s1)).status,403);
+  db.prepare('UPDATE sessions SET expires=0').run();
+  assert.equal((await call('/api/plan','PUT',{events,version:2},s2)).status,403);
+  db.close();
+});

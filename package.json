@@ -1,0 +1,18 @@
+{
+  "name": "plan-lekcji",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "init": "node init.mjs",
+    "test": "node --test",
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.0",
+    "drizzle-orm": "^0.44.0"
+  }
+}

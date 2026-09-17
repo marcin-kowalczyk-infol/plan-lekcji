@@ -1,0 +1,7 @@
+private/
+node_modules/
+.env
+*.sqlite*
+.DS_Store
+dist/
+.sites-runtime/

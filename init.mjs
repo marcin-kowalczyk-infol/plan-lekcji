@@ -1,0 +1,18 @@
+import {randomBytes,randomInt,scryptSync} from 'node:crypto';
+import {mkdirSync,existsSync,readFileSync,writeFileSync,chmodSync} from 'node:fs';
+import {DatabaseSync} from 'node:sqlite';
+import {hash,validate} from './server.mjs';
+import {fileURLToPath} from 'node:url';
+import {resolve} from 'node:path';
+const dir=process.env.DATA_DIR||fileURLToPath(new URL('./private/',import.meta.url));
+mkdirSync(dir,{recursive:true,mode:0o700});chmodSync(dir,0o700);
+if(existsSync(resolve(dir,'config.json'))) throw Error('Konfiguracja już istnieje. Nie nadpisuję dostępu.');
+const events=validate(JSON.parse(readFileSync(resolve(dir,'seed.json'))));
+const token=randomBytes(32).toString('base64url'),pin=String(randomInt(10000000,100000000)),salt=randomBytes(16).toString('hex');
+const config={viewHash:hash(token),pinSalt:salt,pinHash:scryptSync(pin,salt,32).toString('hex'),origins:(process.env.ALLOWED_ORIGINS||'http://127.0.0.1:8787,http://localhost:8787').split(',')};
+writeFileSync(resolve(dir,'config.json'),JSON.stringify(config,null,2),{mode:0o600});
+const db=new DatabaseSync(resolve(dir,'plan.sqlite'));
+db.exec('CREATE TABLE plan (id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL, data TEXT NOT NULL, updated TEXT NOT NULL)');
+db.prepare('INSERT INTO plan VALUES (1,1,?,?)').run(JSON.stringify(events),new Date().toISOString());db.close();chmodSync(resolve(dir,'plan.sqlite'),0o600);
+writeFileSync(resolve(dir,'dostep.json'),JSON.stringify({localUrl:`http://127.0.0.1:8787/#${token}`,token,pin},null,2),{mode:0o600});
+console.log('Utworzono plan. Dane dostępu zapisano w prywatnym pliku dostep.json.');
