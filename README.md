@@ -4,7 +4,7 @@ Wspólny plan tygodnia po polsku. Frontend jest publikowany na GitHub Pages, API
 
 ## Korzystanie
 
-Otwórz prywatny link. „Edytuj plan” odblokowuje zmiany PIN-em na godzinę. Można zmieniać nazwy, dni, godziny i notatki, dodawać lub usuwać zajęcia oraz przeciągać je między dniami. Na telefonie cały tydzień pokazuje wszystkie dni jeden pod drugim; przyciski dni przewijają do wybranego dnia. Widok „Dzisiaj” nadal pokazuje pojedynczy dzień. Po odblokowaniu PIN-em można wpisać osobę zawożącą / odprowadzającą do szkoły dla każdego dnia oraz osobno dla każdej pozycji „Po lekcjach” (od 16:30). Kopię JSON można pobrać i wczytać po odblokowaniu edycji. Zmiany odświeżają się co 15 sekund; zapis od razu trafia do wspólnej bazy.
+Otwórz prywatny link. „Edytuj plan” odblokowuje zmiany PIN-em na godzinę. Można zmieniać nazwy, dni, godziny i notatki, dodawać lub usuwać zajęcia oraz przeciągać je między dniami. Na telefonie w pionie cały tydzień pokazuje wszystkie dni jeden pod drugim; w poziomie (od 600 px szerokości) pięć dni mieści się w jednym wierszu; przyciski dni przewijają do wybranego dnia. Widok „Dzisiaj” nadal pokazuje pojedynczy dzień. Po odblokowaniu PIN-em można wpisać osobę zawożącą / odprowadzającą do szkoły dla każdego dnia oraz osobno dla każdej pozycji „Po lekcjach” (od 16:30). Kopię JSON można pobrać i wczytać po odblokowaniu edycji. Zmiany odświeżają się co 15 sekund; zapis od razu trafia do wspólnej bazy.
 
 „?” oznacza niepewny odczyt ze zdjęcia. Wpis „Kangur” przypomina o cyklu co dwa tygodnie; nie filtruje tygodni, dopóki nie zostanie ustalona pierwsza data. Plan nie uwzględnia automatycznie świąt i wakacji.
 
