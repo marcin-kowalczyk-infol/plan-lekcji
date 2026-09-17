@@ -4,6 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {pbkdf2Sync,randomBytes} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import worker,{digest} from '../worker.mjs';
+import {decodePlan} from '../validate.mjs';
+test('existing drop-off names survive without inventing pickups',()=>{const old={events:[],dayEscorts:['Anna','','','','']};assert.deepEqual(decodePlan(JSON.stringify(old)),{...old,dayPickups:['','','','','']});});
 test('private plan, PIN lockout, sessions, shared writes and conflicting editors',async()=>{
   const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../drizzle/0000_dusty_thing.sql',import.meta.url),'utf8'));
   const wrap=(sql,values=[])=>({bind:(...v)=>wrap(sql,v),first:async()=>db.prepare(sql).get(...values)||null,run:async()=>({meta:{changes:db.prepare(sql).run(...values).changes}})});
@@ -32,20 +34,21 @@ test('private plan, PIN lockout, sessions, shared writes and conflicting editors
   assert.equal((await call('/api/plan','PUT',{events,version:1},s2)).status,409);
   assert.deepEqual((await (await call('/api/plan')).json()).events,changed);
   const withEscort=[{...changed[0],escort:'Anna'}];
-  const dayEscorts=['Jan','','','',''];
-  assert.equal((await call('/api/plan','PUT',{events:withEscort,dayEscorts,version:2},s1)).status,200);
+  const dayEscorts=['Jan','','','',''];const dayPickups=['Maria','','','',''];
+  assert.equal((await call('/api/plan','PUT',{events:withEscort,dayEscorts,dayPickups,version:2},s1)).status,200);
   const saved=(await (await call('/api/plan')).json());
-  assert.deepEqual(saved.dayEscorts,dayEscorts);assert.equal(saved.events[0].escort,'Anna');
+  assert.deepEqual(saved.dayPickups,dayPickups);assert.deepEqual(saved.dayEscorts,dayEscorts);assert.equal(saved.events[0].escort,'Anna');
   // Older open tabs must not erase names they do not know about.
   const legacy=changed.map(({escort,...event})=>event);
   assert.equal((await call('/api/plan','PUT',{events:legacy,version:3},s2)).status,200);
   const preserved=(await (await call('/api/plan')).json());
-  assert.deepEqual(preserved.dayEscorts,dayEscorts);assert.equal(preserved.events[0].escort,'Anna');
+  assert.deepEqual(preserved.dayPickups,dayPickups);assert.deepEqual(preserved.dayEscorts,dayEscorts);assert.equal(preserved.events[0].escort,'Anna');
   assert.equal((await call('/api/plan','PUT',{events:withEscort,dayEscorts:['too few'],version:4},s1)).status,400);
+  assert.equal((await call('/api/plan','PUT',{events:withEscort,dayPickups:['too few'],version:4},s1)).status,400);
   assert.equal((await call('/api/plan','PUT',{events:[{...changed[0],escort:123}],version:4},s1)).status,400);
-  assert.equal((await call('/api/plan','PUT',{events:changed,dayEscorts:['','','','',''],version:4},s1)).status,200);
+  assert.equal((await call('/api/plan','PUT',{events:changed,dayEscorts:['','','','',''],dayPickups:['','','','',''],version:4},s1)).status,200);
   const cleared=(await (await call('/api/plan')).json());
-  assert.deepEqual(cleared.dayEscorts,['','','','','']);assert.equal(cleared.events[0].escort,'');
+  assert.deepEqual(cleared.dayPickups,['','','','','']);assert.deepEqual(cleared.dayEscorts,['','','','','']);assert.equal(cleared.events[0].escort,'');
   assert.equal((await call('/api/lock','POST',{},s1)).status,200);
   assert.equal((await call('/api/plan','PUT',{events,version:2},s1)).status,403);
   db.prepare('UPDATE sessions SET expires=0').run();

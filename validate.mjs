@@ -14,10 +14,12 @@ export function validate(data, previous = []) {
 }
 export function decodePlan(raw) {
   const data=JSON.parse(raw);
-  return Array.isArray(data)?{events:data,dayEscorts:['','','','','']}:{events:data.events,dayEscorts:data.dayEscorts};
+  return Array.isArray(data)?{events:data,dayEscorts:['','','','',''],dayPickups:['','','','','']}:{events:data.events,dayEscorts:data.dayEscorts,dayPickups:data.dayPickups||['','','','','']};
 }
 export function validatePlan(body, previous={events:[],dayEscorts:['','','','','']}) {
   const dayEscorts=body?.dayEscorts===undefined?previous.dayEscorts:body.dayEscorts;
   if(!Array.isArray(dayEscorts)||dayEscorts.length!==5||dayEscorts.some(s=>typeof s!=='string'||s.length>100))throw Error('Wpisz osobę odprowadzającą dla każdego dnia (do 100 znaków).');
-  return {events:validate(body?.events,previous.events),dayEscorts:dayEscorts.map(s=>s.trim())};
+  const dayPickups=body?.dayPickups===undefined?(previous.dayPickups||['','','','','']):body.dayPickups;
+  if(!Array.isArray(dayPickups)||dayPickups.length!==5||dayPickups.some(s=>typeof s!=='string'||s.length>100))throw Error('Wpisz osobę odbierającą dla każdego dnia (do 100 znaków).');
+  return {events:validate(body?.events,previous.events),dayEscorts:dayEscorts.map(s=>s.trim()),dayPickups:dayPickups.map(s=>s.trim())};
 }

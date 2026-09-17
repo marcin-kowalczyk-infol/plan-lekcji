@@ -2,7 +2,7 @@
 Polish shared weekly lesson planner. GitHub Pages serves the frontend; Sites hosts a Cloudflare Worker and D1. Viewing requires the secret link; editing additionally requires the PIN. No automated holiday or fortnightly scheduling.
 
 ## Architecture
-`public/` contains the dependency-free frontend. `worker.mjs` authenticates requests, validates input and performs version-checked D1 writes. `server.mjs` is the local Node/SQLite counterpart. Shared validation and legacy decoding live in `validate.mjs`. The JSON record contains events and five day-level escort names. Events may have their own escort name; the interface exposes it for the existing after-school section (start at or after 16:30).
+`public/` contains the dependency-free frontend. `worker.mjs` authenticates requests, validates input and performs version-checked D1 writes. `server.mjs` is the local Node/SQLite counterpart. Shared validation and legacy decoding live in `validate.mjs`. The JSON record contains events and five day-level drop-off names (dayEscorts) and five pickup names (dayPickups). Events may have their own escort name; the interface exposes it for the existing after-school section (start at or after 16:30).
 
 ## Commands
 - `npm start`: local preview on 127.0.0.1:8787.

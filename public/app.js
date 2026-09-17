@@ -30,11 +30,11 @@ function render(){
   document.querySelector('.day-tabs').innerHTML=short.map((d,i)=>`<button class="${selected===i?'selected':''}" aria-pressed="${selected===i}" data-day="${i}">${d}</button>`).join('');
   document.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{selected=Number(b.dataset.day);render();if(!single)document.querySelector(`[data-drop="${selected}"]`)?.scrollIntoView({block:"start"});});
   $('board').classList.toggle('single',single);
-  const escortMarkup=(value)=>`<span class="escort-label">Kto zawozi / odprowadza</span><span class="escort-name">${esc(value||'Nie wpisano')}</span>`;
+  const escortMarkup=(value,label='Kto zawozi / odprowadza')=>`<span class="escort-label">${esc(label)}</span><span class="escort-name">${esc(value||'Nie wpisano')}</span>`;
   $('board').innerHTML=days.map((day,i)=>{
     if(single && selected!==i)return '';
     const events=plan.events.filter(e=>e.day===i).sort((a,b)=>a.start.localeCompare(b.start));let afternoon=false;
-    return `<section class="day ${now.day===i?'current':''} ${selected===i?'active':''}" data-drop="${i}"><div class="day-head"><h3>${day}</h3>${now.day===i?'<span class="today-tag">DZIŚ</span>':`<span class="day-count">${events.length} zajęć</span>`}</div><${session?'button':'div'} class="day-escort" data-escort-day="${i}">${escortMarkup(plan.dayEscorts?.[i])}${session?'<span class="escort-edit">Zmień</span>':''}</${session?'button':'div'}>${events.map(e=>{let label='';if(e.start>='16:30'&&!afternoon){afternoon=true;label='<p class="section-label">Po lekcjach</p>';}
+    return `<section class="day ${now.day===i?'current':''} ${selected===i?'active':''}" data-drop="${i}"><div class="day-head"><h3>${day}</h3>${now.day===i?'<span class="today-tag">DZIŚ</span>':`<span class="day-count">${events.length} zajęć</span>`}</div><${session?'button':'div'} class="day-escort" data-escort-day="${i}">${escortMarkup(plan.dayEscorts?.[i],'Kto odprowadza')}<span class="day-pickup">${escortMarkup(plan.dayPickups?.[i],'Kto odbiera')}</span>${session?'<span class="escort-edit">Zmień</span>':''}</${session?'button':'div'}>${events.map(e=>{let label='';if(e.start>='16:30'&&!afternoon){afternoon=true;label='<p class="section-label">Po lekcjach</p>';}
       const tag=session?'button':'article';return label+`<${tag} class="event ${e.kind} ${session?'editable':''} ${e.day===now.day&&e.start<=now.time&&e.end>now.time?'live':''}" data-id="${esc(e.id)}" ${session?'draggable="true"':''}>${e.uncertain?'<span class="uncertain" title="Do potwierdzenia">?</span>':''}<span class="time">${e.start}${e.end?' — '+e.end:''}</span><span class="name">${esc(e.name)}</span>${e.note?`<span class="note">${esc(e.note)}</span>`:''}${e.start>='16:30'?`<span class="event-escort">${escortMarkup(e.escort)}</span>`:''}</${tag}>`;
     }).join('')||'<p class="empty">Brak zajęć</p>'}</section>`;
   }).join('');
@@ -45,9 +45,9 @@ function render(){
   }
   $('sync').textContent='✓ Zapis wspólny · '+new Intl.DateTimeFormat('pl-PL',{timeZone:'Europe/Warsaw',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(plan.updated));
 }
-async function save(events,version,dayEscorts=plan.dayEscorts){
+async function save(events,version,dayEscorts=plan.dayEscorts,dayPickups=plan.dayPickups){
   if(busy)throw Error('Poczekaj na zakończenie zapisu.');busy=true;
-  try{plan=await request('/api/plan','PUT',{events,version,dayEscorts});render();notice('Zapisano. Zmiana będzie widoczna u wszystkich.');}
+  try{plan=await request('/api/plan','PUT',{events,version,dayEscorts,dayPickups});render();notice('Zapisano. Zmiana będzie widoczna u wszystkich.');}
   catch(e){if(e.status===409){await load();editVersion=plan.version;dayVersion=plan.version;}if(e.status===403){session='';render();}throw e;}
   finally{busy=false;}
 }
@@ -67,14 +67,14 @@ $('unlock').onclick=async()=>{if(session){try{await request('/api/lock','POST',{
 $('pin-form').onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const d=await request('/api/unlock','POST',{pin:e.currentTarget.elements.pin.value});session=d.session;$('pin-dialog').close();e.target.reset();render();notice('Edycja odblokowana na godzinę.');}catch(err){$('pin-error').textContent=errorText(err);}finally{b.disabled=false;}};
 function updateEscortField(){$('event-escort-label').hidden=$('event-form').elements.start.value<'16:30';}
 $('event-form').elements.start.addEventListener('input',updateEscortField);
-function openDay(day){editingDay=day;dayVersion=plan.version;$('day-title').textContent=days[day];$('day-form').elements.escort.value=plan.dayEscorts?.[day]||'';$('day-error').textContent='';$('day-dialog').showModal();}
-$('day-form').onsubmit=async e=>{e.preventDefault();const escorts=[...(plan.dayEscorts||['','','','',''])];escorts[editingDay]=e.currentTarget.elements.escort.value.trim();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{await save(plan.events,dayVersion,escorts);$('day-dialog').close();}catch(err){$('day-error').textContent=errorText(err);}finally{b.disabled=false;}};
+function openDay(day){editingDay=day;dayVersion=plan.version;$('day-title').textContent=days[day];$('day-form').elements.escort.value=plan.dayEscorts?.[day]||'';$('day-form').elements.pickup.value=plan.dayPickups?.[day]||'';$('day-error').textContent='';$('day-dialog').showModal();}
+$('day-form').onsubmit=async e=>{e.preventDefault();const escorts=[...(plan.dayEscorts||['','','','',''])];escorts[editingDay]=e.currentTarget.elements.escort.value.trim();const pickups=[...(plan.dayPickups||['','','','',''])];pickups[editingDay]=e.currentTarget.elements.pickup.value.trim();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{await save(plan.events,dayVersion,escorts,pickups);$('day-dialog').close();}catch(err){$('day-error').textContent=errorText(err);}finally{b.disabled=false;}};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('add').onclick=()=>openEvent();$('retry').onclick=load;
 $('week-view').onclick=()=>{single=false;render();};$('today-view').onclick=()=>{const d=clock().day;if(d>4){notice('Dzisiaj weekend — pokazuję poniedziałek.');selected=0;}else selected=d;single=true;render();};
 $('share').onclick=async()=>{const url=location.origin+location.pathname+'#'+token;try{if(navigator.share)await navigator.share({title:'Plan lekcji',url});else{await navigator.clipboard.writeText(url);notice('Skopiowano prywatny link. Możesz wkleić go na WhatsAppie.');}}catch(e){if(e.name!=='AbortError')notice('Nie udało się skopiować. Skopiuj pełny adres z paska przeglądarki.');}};
-$('export').onclick=()=>{const blob=new Blob([JSON.stringify({events:plan.events,dayEscorts:plan.dayEscorts},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='plan-lekcji.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);};
-$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>100000)throw Error('Plik jest za duży.');const data=JSON.parse(await f.text());if(!Array.isArray(data.events))throw Error('Plik nie zawiera kopii planu.');if(await confirmAction('Zastąpić cały plan?',`Wczytasz ${data.events.length} wpisów. Obecny plan zostanie zastąpiony dla wszystkich.`))await save(data.events,plan.version,data.dayEscorts);}catch(err){notice(errorText(err));}finally{e.target.value='';}};
+$('export').onclick=()=>{const blob=new Blob([JSON.stringify({events:plan.events,dayEscorts:plan.dayEscorts,dayPickups:plan.dayPickups},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='plan-lekcji.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);};
+$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>100000)throw Error('Plik jest za duży.');const data=JSON.parse(await f.text());if(!Array.isArray(data.events))throw Error('Plik nie zawiera kopii planu.');if(await confirmAction('Zastąpić cały plan?',`Wczytasz ${data.events.length} wpisów. Obecny plan zostanie zastąpiony dla wszystkich.`))await save(data.events,plan.version,data.dayEscorts,data.dayPickups);}catch(err){notice(errorText(err));}finally{e.target.value='';}};
 window.addEventListener('hashchange',()=>location.reload());
 setInterval(()=>{if(token&&!busy&&!document.querySelector('dialog[open]')&&!document.hidden)load();},15000);
 load();
