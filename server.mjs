@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 
 export const hash = value => createHash('sha256').update(value).digest('hex');
-import {validate} from './validate.mjs';
+import {validate,decodePlan,validatePlan} from './validate.mjs';
 export {validate} from './validate.mjs';
 export function app({dbPath, config, publicDir = fileURLToPath(new URL('./public/', import.meta.url))}) {
   const db = new DatabaseSync(dbPath);
@@ -58,17 +58,18 @@ export function app({dbPath, config, publicDir = fileURLToPath(new URL('./public
     }
     if(path === '/api/plan' && req.method === 'GET') {
       const p=db.prepare('SELECT * FROM plan WHERE id=1').get();
-      return p?send(200,{version:p.version,events:JSON.parse(p.data),updated:p.updated}):send(503,{error:'Plan nie został jeszcze wczytany.'});
+      return p?send(200,{version:p.version,...decodePlan(p.data),updated:p.updated}):send(503,{error:'Plan nie został jeszcze wczytany.'});
     }
     if(req.method === 'PUT' && path === '/api/plan' || req.method === 'POST' && path === '/api/lock') {
       const session=hash(req.headers['x-edit-session']||'');
       if(!db.prepare('SELECT 1 FROM sessions WHERE token=? AND expires>?').get(session,Date.now())) return send(403,{error:'Odblokuj edycję PIN-em ponownie.'});
       if(path === '/api/lock') {db.prepare('DELETE FROM sessions WHERE token=?').run(session);return send(200,{ok:true});}
-      let events; try {events=validate(body?.events);if(!Number.isInteger(body.version)) throw Error('Nieprawidłowa wersja.');} catch(e) {return send(400,{error:e.message});}
+      const previous=db.prepare('SELECT data FROM plan WHERE id=1').get();
+      let data; try {data=validatePlan(body,previous?decodePlan(previous.data):undefined);if(!Number.isInteger(body.version)) throw Error('Nieprawidłowa wersja.');} catch(e) {return send(400,{error:e.message});}
       const updated=new Date().toISOString();
-      const result=db.prepare('UPDATE plan SET data=?,version=version+1,updated=? WHERE id=1 AND version=?').run(JSON.stringify(events),updated,body.version);
+      const result=db.prepare('UPDATE plan SET data=?,version=version+1,updated=? WHERE id=1 AND version=?').run(JSON.stringify(data),updated,body.version);
       if(!result.changes) return send(409,{error:'Ktoś zmienił plan. Odświeżono dane — sprawdź je i ponów swoją zmianę.'});
-      return send(200,{version:body.version+1,events,updated});
+      return send(200,{version:body.version+1,...data,updated});
     }
     send(404,{error:'Nie znaleziono.'});
   });

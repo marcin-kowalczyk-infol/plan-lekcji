@@ -22,7 +22,7 @@ test('private plan, PIN lockout, sessions, shared writes and conflicting editors
   const s1=(await (await call('/api/unlock','POST',{pin})).json()).session;
   const s2=(await (await call('/api/unlock','POST',{pin})).json()).session;
   assert.ok(s1&&s2);
-  const events=[{id:'test-lesson',day:0,name:'Test',start:'08:00',end:'08:45',kind:'edu',note:'',uncertain:false}];
+  const events=[{id:'test-lesson',day:0,name:'Test',start:'08:00',end:'08:45',kind:'edu',note:'',uncertain:false,escort:''}];
   assert.equal((await call('/api/plan','PUT',{events,version:0},s1)).status,200);
   let read=await call('/api/plan');assert.equal(read.headers.get('Cache-Control'),'no-store');assert.match(read.headers.get('X-Robots-Tag'),/noindex/);assert.deepEqual((await read.json()).events,events);
   assert.equal((await call('/api/plan','PUT',{events,version:0},s2)).status,409);
@@ -31,6 +31,21 @@ test('private plan, PIN lockout, sessions, shared writes and conflicting editors
   assert.equal((await call('/api/plan','PUT',{events:changed,version:1},s1)).status,200);
   assert.equal((await call('/api/plan','PUT',{events,version:1},s2)).status,409);
   assert.deepEqual((await (await call('/api/plan')).json()).events,changed);
+  const withEscort=[{...changed[0],escort:'Anna'}];
+  const dayEscorts=['Jan','','','',''];
+  assert.equal((await call('/api/plan','PUT',{events:withEscort,dayEscorts,version:2},s1)).status,200);
+  const saved=(await (await call('/api/plan')).json());
+  assert.deepEqual(saved.dayEscorts,dayEscorts);assert.equal(saved.events[0].escort,'Anna');
+  // Older open tabs must not erase names they do not know about.
+  const legacy=changed.map(({escort,...event})=>event);
+  assert.equal((await call('/api/plan','PUT',{events:legacy,version:3},s2)).status,200);
+  const preserved=(await (await call('/api/plan')).json());
+  assert.deepEqual(preserved.dayEscorts,dayEscorts);assert.equal(preserved.events[0].escort,'Anna');
+  assert.equal((await call('/api/plan','PUT',{events:withEscort,dayEscorts:['too few'],version:4},s1)).status,400);
+  assert.equal((await call('/api/plan','PUT',{events:[{...changed[0],escort:123}],version:4},s1)).status,400);
+  assert.equal((await call('/api/plan','PUT',{events:changed,dayEscorts:['','','','',''],version:4},s1)).status,200);
+  const cleared=(await (await call('/api/plan')).json());
+  assert.deepEqual(cleared.dayEscorts,['','','','','']);assert.equal(cleared.events[0].escort,'');
   assert.equal((await call('/api/lock','POST',{},s1)).status,200);
   assert.equal((await call('/api/plan','PUT',{events,version:2},s1)).status,403);
   db.prepare('UPDATE sessions SET expires=0').run();

@@ -1,4 +1,4 @@
-import {validate} from './validate.mjs';
+import {validate,decodePlan,validatePlan} from './validate.mjs';
 const encoder=new TextEncoder();
 const hex=b=>Array.from(new Uint8Array(b),n=>n.toString(16).padStart(2,'0')).join('');
 export const digest=async s=>hex(await crypto.subtle.digest('SHA-256',encoder.encode(s)));
@@ -37,17 +37,18 @@ export default {async fetch(req,env){
     }
     if(path==='/api/plan'&&req.method==='GET'){
       const p=await db.prepare('SELECT * FROM plan WHERE id=1').first();
-      return p?send(200,{version:p.version,events:JSON.parse(p.data),updated:p.updated}):send(503,{error:'Plan nie został jeszcze wczytany.'});
+      return p?send(200,{version:p.version,...decodePlan(p.data),updated:p.updated}):send(503,{error:'Plan nie został jeszcze wczytany.'});
     }
     if(path==='/api/plan'&&req.method==='PUT'||path==='/api/lock'&&req.method==='POST'){
       const session=await digest(req.headers.get('X-Edit-Session')||'');
       if(!await db.prepare('SELECT 1 FROM sessions WHERE token=? AND expires>?').bind(session,Date.now()).first())return send(403,{error:'Odblokuj edycję PIN-em ponownie.'});
       if(path==='/api/lock'){await db.prepare('DELETE FROM sessions WHERE token=?').bind(session).run();return send(200,{ok:true});}
-      let events;try{events=validate(body?.events);if(!Number.isInteger(body.version)||body.version<0)throw Error('Nieprawidłowa wersja.');}catch(e){return send(400,{error:e.message});}
+      const previous=await db.prepare('SELECT data FROM plan WHERE id=1').first();
+      let data;try{data=validatePlan(body,previous?decodePlan(previous.data):undefined);if(!Number.isInteger(body.version)||body.version<0)throw Error('Nieprawidłowa wersja.');}catch(e){return send(400,{error:e.message});}
       const updated=new Date().toISOString();
-      const r=body.version===0?await db.prepare('INSERT OR IGNORE INTO plan (id,version,data,updated) VALUES (1,1,?,?)').bind(JSON.stringify(events),updated).run():await db.prepare('UPDATE plan SET data=?,version=version+1,updated=? WHERE id=1 AND version=?').bind(JSON.stringify(events),updated,body.version).run();
+      const r=body.version===0?await db.prepare('INSERT OR IGNORE INTO plan (id,version,data,updated) VALUES (1,1,?,?)').bind(JSON.stringify(data),updated).run():await db.prepare('UPDATE plan SET data=?,version=version+1,updated=? WHERE id=1 AND version=?').bind(JSON.stringify(data),updated,body.version).run();
       if(!r.meta.changes)return send(409,{error:'Ktoś zmienił plan. Odświeżono dane — sprawdź je i ponów swoją zmianę.'});
-      return send(200,{version:body.version+1,events,updated});
+      return send(200,{version:body.version+1,...data,updated});
     }
     return send(404,{error:'Nie znaleziono.'});
   }catch{console.error('Plan API request failed');return send(503,{error:'Zapis jest chwilowo niedostępny. Spróbuj ponownie.'});}
